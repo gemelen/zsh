@@ -1,0 +1,208 @@
+#compdef vmadm
+
+__vmadm() {
+  typeset -A opt_args
+  local context state line
+
+  local curcontext="$curcontext"
+  local ret=1
+
+  _arguments -C \
+    '1: :__vmadm_commands' \
+    '*::arg:->args' && ret=0
+
+  case $state in
+    args)
+      case $words[1] in
+      (create|receive)
+          _arguments \
+          '-f[filename]: :_files' \
+          && ret=0
+        ;;
+      (create-snapshot|delete-snapshot|rollback-snapshot)
+          _arguments \
+          '1:uuid:__vm_uuids_with_aliases' \
+          '2:snapname:->args' \
+          && ret=0
+        ;;
+      (get|send)
+          _arguments \
+          '1:uuid:__vm_uuids_with_aliases' \
+          && ret=0
+        ;;
+      (console|delete|start)
+          _arguments \
+          '1:uuid:__vm_uuids_with_alias_and_state' \
+          && ret=0
+        ;;
+      (events)
+          _arguments -s \
+          '-f --full)'{-f,--full}'[Output the full event]' \
+          '(-j --json)'{-j,--json}'[Output in JSON]' \
+          '(-r --ready)'{-r,--ready}'[Output an extra event when the event stream opened and ready]' \
+          '1:uuid:__vm_uuids_with_aliases' \
+          && ret=0
+        ;;
+      (info)
+          local -a args 
+          args=(
+            '1:uuid:__vm_uuids_with_aliases'
+            '*:info_type:__vm_info_types'
+          )
+          _arguments -s $args && ret=0
+        ;;
+      (kill)
+          _arguments -s \
+          '(-s --signal)'{-s,--signal}'[Signal to send, name or numeric id]:signal:_signals' \
+          '1:uuid:__vm_uuids_with_aliases' \
+          && ret=0
+        ;;
+      (list)
+          __vmadm_list \
+          && ret=0
+        ;;
+      (lookup)
+          __vmadm_lookup \
+          && ret=0
+        ;;
+      (reboot|stop)
+          _arguments \
+          '1:uuid:__vm_uuids_with_alias_and_state' \
+          '-F[Forced execution]' \
+          && ret=0
+        ;;
+      (reprovision|update|validate)
+          _arguments \
+          '1:uuid:__vm_uuids_with_aliases' \
+          '-f[filename]: :_files' \
+          && ret=0
+        ;;
+      (sysrq)
+          _arguments \
+          '1:uuid:__vm_uuids_with_aliases' \
+          '2: :((nmi\:"Send Non-Maskable Interrupt" screenshot\:"Take a screenshot"))' \
+          && ret=0
+        ;;
+      (*)
+          _normal && ret=0
+        ;;
+      esac
+      ;;
+  esac
+
+  return ret
+}
+
+# Helpers
+__vm_uuids_with_aliases() {
+  local -a uuids
+  uuids=( $(vmadm list -p -o uuid,alias) )
+  _describe 'uuid' uuids
+}
+__vm_uuids_with_alias_and_state() {
+  local -a uuids
+  uuids=( $(vmadm list -p -o uuid,alias,state) )
+  _describe 'uuid' uuids
+}
+__vm_info_types() {
+  local -a info_types
+  info_types=(
+    'all' 'block' 'blockstats' 'chardev' 'cpus' 'kvm' 'pci' 'spice' 'version' 'vnc'
+  )
+  _describe -t info_types 'info_type' info_types
+}
+__vmadm_list() {
+  local -a args
+  args=(
+    '-h[Show header]'
+    '-H[Hide header]'
+    '-p[Use colon-separated non-tabulated output]'
+    '-s[Sort by field(s), asc]:field:__vm_fields'
+    '-o[Output fields order]:field:__vm_fields'
+  )
+  _arguments -s $args
+}
+__vmadm_lookup() {
+  local -a args
+  args=(
+    '-1[Result of the lookup should be unique]'
+    '-j[Output in JSON]'
+    '-o[Output fields]:field:__vm_fields'
+  )
+  _arguments -s $args
+}
+
+__vm_fields() {
+  local -a fields remaining_fields
+  local current_input already_used
+
+  fields=(
+    'alias' 'autoboot' 'billing_id' 'boot_timestamp' 'brand' 'cpu_cap'
+    'cpu_shares' 'cpu_type' 'create_timestamp' 'dns_domain' 'do_not_inventory'
+    'docker' 'exit_status' 'exit_timestamp' 'firewall_enabled' 'flexible_disk_size'
+    'free_space' 'hostname' 'hvm' 'image_uuid' 'indestructible_delegated'
+    'indestructible_zoneroot' 'ram' 'max_locked_memory' 'max_lwps'
+    'max_physical_memory' 'max_swap' 'owner_uuid' 'package_name' 'package_version'
+    'pid' 'qemu_extra_opts' 'quota' 'zone_state' 'state' 'tmpfs' 'type'
+    'uuid' 'vcpus' 'zfs_io_priority' 'zpool' 'zonename' 'zonepath' 'zoneid'
+  )
+  current_input=$PREFIX
+
+  # Extract already used fields from the entire input
+  if [[ $current_input == *,* ]]; then
+    # Get all components in the comma-separated list
+    already_used=${current_input//,/ }
+
+    # Create remaining fields list explicitly
+    remaining_fields=()
+    for field in $fields; do
+      # Check if field is in the already_used string
+      if [[ $already_used != *$field* ]]; then
+        remaining_fields+=($field)
+      fi
+    done
+  else
+    # First completion, offer all options
+    remaining_fields=($fields)
+  fi
+
+  # Position after the last comma if needed
+  if [[ $current_input == *,* ]]; then
+    compset -P '*,'
+  fi
+
+  # Add completions with no space suffix
+  compadd -S '' -q $remaining_fields
+}
+
+__vmadm_commands() {
+  local -a commands=(
+    'create:Create a new VM on the system'
+    'create-snapshot:Create a VM snapshot, experimental'
+    'console:Connect to a text console of a running VM'
+    'delete:Delete a specified VM'
+    'delete-snapshot:Delete a snapshot of a VM'
+    'events:Output events for a given VM or all VMs on the system'
+    'get:Output a JSON object desribing a VM'
+    'info:Output a JSON object describing a running KVM VM'
+    'kill:Send a signal to a VM init process'
+    'list:List VMs in a given or default order with a given or default set of fields'
+    'lookup:List VMs according to a given filter'
+    'reboot:Reboot a VM'
+    'receive:Complete a cold VM migration'
+    'reprovision:Reprovision existing VM'
+    'rollback-snapshot:Rollback a VM to a specified snapshot'
+    'send:Start a cold VM migration'
+    'start:Start a VM'
+    'stop:Stop a VM'
+    'sysrq:Send an NMI or take a screenshot of a KVM VM'
+    'update:Update a VM properties'
+    'validate:Validate a JSON payload for the create or update command'
+  )
+
+  _describe -t commands 'command' commands "$@"
+}
+
+__vmadm "$@"
+
+# vim: ft=zsh nospell
